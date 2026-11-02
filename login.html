@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in</title><link rel="stylesheet" href="/style.css">
+</head><body><div class="wrap" style="max-width:380px;margin-top:4rem">
+  <h1>Invoices</h1>
+  <label for="u">Username</label><input id="u" autocomplete="username" autofocus>
+  <label for="p">Password</label><input id="p" type="password" autocomplete="current-password">
+  <button id="go" style="margin-top:1.2rem">Sign in</button>
+  <div id="err" class="error" role="alert"></div>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    async function login() {
+      $("go").disabled = true; $("err").textContent = "";
+      try {
+        const res = await fetch("/api/login", { method:"POST", headers:{ "Content-Type":"application/json" },
+          body: JSON.stringify({ username: $("u").value, password: $("p").value }) });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Sign-in failed.");
+        location.href = "/";
+      } catch (e) { $("err").textContent = e.message; }
+      finally { $("go").disabled = false; }
+    }
+    $("go").addEventListener("click", login);
+    $("p").addEventListener("keydown", (e) => { if (e.key === "Enter") login(); });
+  </script>
+</div></body></html>
