@@ -2,8 +2,14 @@
   "name": "invoice-app",
   "version": "0.1.0",
   "private": true,
-  "scripts": { "start": "node server.js", "create-user": "node scripts/create-user.js" },
-  "engines": { "node": ">=18" },
+  "scripts": {
+    "start": "node server.js",
+    "create-user": "node scripts/create-user.js",
+    "hash-password": "node scripts/hash-password.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "cookie-session": "^2.1.0",
