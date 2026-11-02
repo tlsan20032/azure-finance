@@ -1,10 +1,17 @@
 const sql = require("mssql");
 
+// Two ways to sign in to Azure SQL:
+//  1) DB_USER + DB_PASSWORD set  -> SQL login (handy on your own computer)
+//  2) neither set                -> passwordless Microsoft Entra sign-in. On Azure this uses the
+//     App Service's managed identity; on your computer it uses your `az login` session.
+const useSqlLogin = Boolean(process.env.DB_USER);
+
 const config = {
   server: process.env.DB_SERVER,
   database: process.env.DB_NAME,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
+  ...(useSqlLogin
+    ? { user: process.env.DB_USER, password: process.env.DB_PASSWORD }
+    : { authentication: { type: "azure-active-directory-default" } }),
   options: { encrypt: true, trustServerCertificate: false },
   connectionTimeout: 60000, // a paused serverless database can take a while to wake up
   requestTimeout: 30000,
@@ -22,7 +29,7 @@ async function connectWithRetry() {
       return pool;
     } catch (err) {
       if (i >= ATTEMPTS) throw err;
-      console.warn(`DB connect attempt ${i} failed (${err.code || err.message}); retrying in 5s`);
+      console.warn(`DB connect attempt ${i} failed: ${err.code || ""} ${err.message}; retrying in 5s`);
       await new Promise((r) => setTimeout(r, 5000));
     }
   }
