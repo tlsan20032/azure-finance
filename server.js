@@ -118,8 +118,14 @@ app.get("/api/health", requireApiAuth, requireAdmin, async (req, res, next) => {
   try { await query("SELECT 1 AS ok"); res.json({ database: "ok" }); } catch (e) { next(e); }
 });
 
+app.use("/api/clients", requireApiAuth, require("./routes/clients"));
+app.use("/api/invoices", requireApiAuth, require("./routes/invoices"));
+app.use("/api/settings", requireApiAuth, require("./routes/settings"));
+app.use("/api", requireApiAuth, require("./routes/catalog")); // /api/categories and /api/products
+
 app.get("/", requirePageAuth, (req, res) => res.sendFile(path.join(__dirname, "private", "index.html")));
-app.use(express.static(path.join(__dirname, "public"), { index: false })); // login page + css only
+app.use(express.static(path.join(__dirname, "public"), { index: false })); // login page, css, app.js
+app.use(requirePageAuth, express.static(path.join(__dirname, "private"), { index: false })); // signed-in pages
 
 app.use((err, req, res, next) => {
   console.error(err);

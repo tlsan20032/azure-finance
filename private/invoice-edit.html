@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Invoice</title><link rel="stylesheet" href="/style.css">
+</head><body><div class="wrap" style="max-width:1100px">
+  <header id="nav"></header>
+  <h2 id="title">New invoice</h2>
+  <div class="grid">
+    <div><label for="doc_type">Type</label><select id="doc_type"><option value="tax_invoice">Tax invoice</option><option value="invoice">Invoice</option></select></div>
+    <div><label for="reference_no">Reference number</label><input id="reference_no" maxlength="100"></div>
+    <div><label for="issue_date">Invoice date</label><input id="issue_date" type="date"></div>
+    <div><label for="due_date">Due date</label><input id="due_date" type="date"></div>
+    <div><label for="currency">Currency</label><select id="currency"></select></div>
+    <div id="rateBox" style="display:none"><label for="rate">Exchange rate (1 unit = ? SGD)</label><input id="rate" inputmode="decimal"></div>
+  </div>
+
+  <h3>Client</h3>
+  <label for="clientPick">Pick from client list</label><select id="clientPick"></select>
+  <div class="grid">
+    <div><label for="client_name">Client's business name *</label><input id="client_name" maxlength="200"></div>
+    <div><label for="client_gst">Client's GST reg no</label><input id="client_gst" maxlength="50"></div>
+    <div><label for="client_email">Client's email</label><input id="client_email" maxlength="255"></div>
+    <div><label for="client_address">Client's business address</label><textarea id="client_address" maxlength="500"></textarea></div>
+  </div>
+
+  <h3>Products &amp; services</h3>
+  <label for="prodPick">Add from your list</label><select id="prodPick"></select>
+  <div style="overflow-x:auto"><table class="items">
+    <thead><tr><th>Name</th><th>Unit price</th><th>Qty</th><th>Unit</th><th>GST %</th><th>Discount</th><th class="num">Line total</th><th></th></tr></thead>
+    <tbody id="items"></tbody></table></div>
+  <p><button id="addLine" class="small" type="button">+ Add blank line</button></p>
+  <div class="totals">
+    <div><span>Subtotal (excl. GST)</span><span id="tSub"></span></div>
+    <div><span>GST</span><span id="tGst"></span></div>
+    <div class="grand"><span>Total</span><span id="tTotal"></span></div>
+  </div>
+
+  <label for="notes">Notes in the invoice</label><textarea id="notes" maxlength="4000"></textarea>
+  <label for="email_text">Email text</label><textarea id="email_text" maxlength="4000"></textarea>
+  <p><button id="save">Save invoice</button> <a href="/invoices.html">Cancel</a> <span id="msg" class="error"></span></p>
+
+  <script src="/app.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const qs = new URLSearchParams(location.search);
+    let settings = {}, clients = [], products = [], items = [], editingId = null, dueTouched = false, cells = [];
+    const say = (t, ok) => { $("msg").textContent = t; $("msg").className = ok ? "ok" : "error"; };
+    const opt = (v, l) => { const o = document.createElement("option"); o.value = v; o.textContent = l; return o; };
+    const blank = () => ({ product_id: null, name: "", unit_price: "", quantity: 1, unit: "", gst_rate: settings.default_gst_rate ?? 9, discount_value: "", discount_type: "percent" });
+
+    // Same arithmetic as the server (whole cents). The server's figures are the ones that count.
+    function calcLine(it) {
+      const price = Math.round(Number(it.unit_price || 0) * 100);
+      const gross = Math.round(price * Number(it.quantity || 0));
+      let d = it.discount_type === "amount" ? Math.round(Number(it.discount_value || 0) * 100) : Math.round(gross * Number(it.discount_value || 0) / 100);
+      d = Math.min(Math.max(d, 0), gross);
+      const net = gross - d, gst = Math.round(net * Number(it.gst_rate || 0) / 100);
+      return { net, gst, total: net + gst };
+    }
+    function refresh() {
+      let n = 0, g = 0, t = 0; const cur = $("currency").value;
+      items.forEach((it, i) => { const l = calcLine(it); n += l.net; g += l.gst; t += l.total; if (cells[i]) cells[i].textContent = moneyIn(l.total / 100, cur); });
+      $("tSub").textContent = moneyIn(n / 100, cur); $("tGst").textContent = moneyIn(g / 100, cur); $("tTotal").textContent = moneyIn(t / 100, cur);
+    }
+    function field(i, key, attrs = {}) {
+      const inp = document.createElement("input"); Object.assign(inp, attrs); inp.value = items[i][key] ?? "";
+      inp.oninput = () => { items[i][key] = inp.value; refresh(); };
+      return inp;
+    }
+    function renderItems() {
+      cells = [];
+      $("items").replaceChildren(...items.map((it, i) => {
+        const tr = document.createElement("tr"), td = () => document.createElement("td");
+        const mk = (child) => { const c = td(); c.append(child); tr.append(c); return c; };
+        mk(field(i, "name", { maxLength: 300, style: "min-width:180px" }));
+        mk(field(i, "unit_price", { inputMode: "decimal", style: "width:90px" }));
+        mk(field(i, "quantity", { inputMode: "decimal", style: "width:60px" }));
+        mk(field(i, "unit", { maxLength: 30, style: "width:60px" }));
+        mk(field(i, "gst_rate", { inputMode: "decimal", style: "width:60px" }));
+        const dc = td(); dc.append(field(i, "discount_value", { inputMode: "decimal", style: "width:70px" }));
+        const sel = document.createElement("select"); sel.append(opt("percent", "%"), opt("amount", "$")); sel.value = it.discount_type;
+        sel.onchange = () => { it.discount_type = sel.value; refresh(); }; dc.append(sel); tr.append(dc);
+        const total = td(); total.className = "num"; cells.push(total); tr.append(total);
+        mk(button("Remove", () => { items.splice(i, 1); renderItems(); }));
+        return tr;
+      }));
+      refresh();
+    }
+    function fill(inv, list, asCopy) {
+      $("doc_type").value = inv.doc_type; $("reference_no").value = inv.reference_no || "";
+      $("currency").value = inv.currency; $("rate").value = inv.sgd_exchange_rate || ""; currencyChanged();
+      $("client_name").value = inv.client_name; $("client_gst").value = inv.client_gst_reg_no || "";
+      $("client_email").value = inv.client_email || ""; $("client_address").value = inv.client_address || "";
+      $("clientPick").value = inv.client_id || ""; $("notes").value = inv.notes || ""; $("email_text").value = inv.email_text || "";
+      if (!asCopy) { $("issue_date").value = dateOnly(inv.issue_date); $("due_date").value = dateOnly(inv.due_date); dueTouched = true; }
+      items = list.map((x) => ({ product_id: x.product_id, name: x.name, unit_price: x.unit_price, quantity: x.quantity,
+        unit: x.unit || "", gst_rate: x.gst_rate, discount_value: x.discount_value || "", discount_type: x.discount_type }));
+    }
+    function currencyChanged() { $("rateBox").style.display = $("currency").value === "SGD" ? "none" : ""; refresh(); }
+
+    $("currency").onchange = currencyChanged;
+    $("issue_date").onchange = () => { if (!dueTouched) $("due_date").value = addDays($("issue_date").value, Number(settings.payment_terms_days ?? 14)); };
+    $("due_date").onchange = () => { dueTouched = true; };
+    $("addLine").onclick = () => { items.push(blank()); renderItems(); };
+    $("clientPick").onchange = () => {
+      const c = clients.find((x) => String(x.id) === $("clientPick").value); if (!c) return;
+      $("client_name").value = c.business_name; $("client_gst").value = c.gst_reg_no || "";
+      $("client_email").value = c.email || ""; $("client_address").value = c.address || "";
+    };
+    $("prodPick").onchange = () => {
+      const p = products.find((x) => String(x.id) === $("prodPick").value); if (!p) return;
+      const last = items[items.length - 1]; // reuse an untouched blank line instead of leaving it behind
+      if (last && !last.name && last.unit_price === "") items.pop();
+      items.push({ ...blank(), product_id: p.id, name: p.name, unit_price: p.unit_price, unit: p.unit || "", gst_rate: p.gst_rate });
+      $("prodPick").value = ""; renderItems();
+    };
+    $("save").onclick = async () => {
+      say(""); $("save").disabled = true;
+      const body = { doc_type: $("doc_type").value, issue_date: $("issue_date").value, due_date: $("due_date").value,
+        currency: $("currency").value, sgd_exchange_rate: $("rate").value, reference_no: $("reference_no").value,
+        client_id: $("clientPick").value || null, client_name: $("client_name").value, client_gst_reg_no: $("client_gst").value,
+        client_email: $("client_email").value, client_address: $("client_address").value,
+        notes: $("notes").value, email_text: $("email_text").value, items };
+      try {
+        const r = editingId ? await api("PUT", "/api/invoices/" + editingId, body) : await api("POST", "/api/invoices", body);
+        location.href = "/invoice.html?id=" + (editingId || r.id);
+      } catch (e) { say(e.message); $("save").disabled = false; }
+    };
+
+    (async () => {
+      await renderNav("/invoices.html");
+      [settings, clients, products] = await Promise.all([api("GET", "/api/settings"), api("GET", "/api/clients"), api("GET", "/api/products")]);
+      for (const c of ["SGD","USD","EUR","GBP","MYR","AUD","JPY","CNY","HKD","INR","IDR","THB"]) $("currency").append(opt(c, c));
+      $("clientPick").append(opt("", "(type details below)"), ...clients.map((c) => opt(c.id, c.business_name)));
+      $("prodPick").append(opt("", "Choose a product or service..."), ...products.map((p) => opt(p.id, `${p.name} (${moneyIn(p.unit_price)})`)));
+      $("doc_type").value = settings.gst_reg_no ? "tax_invoice" : "invoice";
+      $("currency").value = settings.default_currency || "SGD";
+      $("issue_date").value = todayIso(); $("due_date").value = addDays(todayIso(), Number(settings.payment_terms_days ?? 14));
+      const src = qs.get("id") || qs.get("copy");
+      if (src) {
+        const { invoice, items: list } = await api("GET", "/api/invoices/" + src);
+        fill(invoice, list, !!qs.get("copy"));
+        if (qs.get("id")) { editingId = invoice.id; $("title").textContent = "Edit invoice " + invoice.invoice_no; }
+        else $("title").textContent = "New invoice (copy of " + invoice.invoice_no + ")";
+      } else items = [blank()];
+      renderItems(); currencyChanged();
+    })().catch((e) => say(e.message));
+  </script>
+</div></body></html>

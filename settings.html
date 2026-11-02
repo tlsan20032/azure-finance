@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Settings</title><link rel="stylesheet" href="/style.css">
+</head><body><div class="wrap">
+  <header id="nav"></header>
+  <h2>Business settings</h2>
+  <p class="muted">Printed on every invoice. Add your GST registration number if you are GST-registered; a tax invoice must show it.</p>
+  <div class="grid">
+    <div><label for="business_name">Business name *</label><input id="business_name" maxlength="200"></div>
+    <div><label for="gst_reg_no">GST reg no</label><input id="gst_reg_no" maxlength="50"></div>
+    <div><label for="uen">UEN</label><input id="uen" maxlength="50"></div>
+    <div><label for="default_currency">Default currency</label><select id="default_currency"></select></div>
+    <div><label for="default_gst_rate">Default GST %</label><input id="default_gst_rate" inputmode="decimal"></div>
+    <div><label for="payment_terms_days">Payment terms (days)</label><input id="payment_terms_days" inputmode="numeric"></div>
+  </div>
+  <label for="business_address">Business address</label><textarea id="business_address" maxlength="500"></textarea>
+  <label for="payment_details">Payment details (bank account, PayNow...)</label><textarea id="payment_details" maxlength="4000"></textarea>
+  <label for="invoice_footer">Invoice footer</label><textarea id="invoice_footer" maxlength="4000"></textarea>
+  <p><button id="save">Save settings</button> <span id="msg" class="error"></span></p>
+  <script src="/app.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const F = ["business_name","gst_reg_no","uen","default_currency","default_gst_rate","payment_terms_days","business_address","payment_details","invoice_footer"];
+    const say = (t, ok) => { $("msg").textContent = t; $("msg").className = ok ? "ok" : "error"; };
+    for (const c of ["SGD","USD","EUR","GBP","MYR","AUD","JPY","CNY","HKD","INR","IDR","THB"]) { const o = document.createElement("option"); o.value = o.textContent = c; $("default_currency").append(o); }
+    $("save").onclick = async () => {
+      say("");
+      try { await api("PUT", "/api/settings", Object.fromEntries(F.map((k) => [k, $(k).value]))); say("Saved.", true); }
+      catch (e) { say(e.message); }
+    };
+    renderNav("/settings.html").then((me) => {
+      if (me.role !== "admin") { say("Only admins can change settings."); $("save").disabled = true; }
+      return api("GET", "/api/settings");
+    }).then((s) => { for (const k of F) $(k).value = s[k] ?? ""; }).catch((e) => say(e.message));
+  </script>
+</div></body></html>

@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Invoices</title><link rel="stylesheet" href="/style.css">
+</head><body><div class="wrap" style="max-width:1100px">
+  <header id="nav"></header>
+  <p><a href="/invoice-edit.html"><button type="button">+ New invoice</button></a></p>
+
+  <div class="row">
+    <div><label for="from">From</label><input id="from" type="date"></div>
+    <div><label for="to">To</label><input id="to" type="date"></div>
+    <div><label for="q">Keyword</label><input id="q" placeholder="No., client, reference"></div>
+    <div><label for="status">Status</label><select id="status"><option value="">All</option><option>unpaid</option><option>paid</option><option>void</option></select></div>
+    <div><label for="type">Type</label><select id="type"><option value="">All</option><option value="tax_invoice">Tax invoice</option><option value="invoice">Invoice</option></select></div>
+    <div><label for="sort">Sort by</label><select id="sort"><option value="newest">Newest</option><option value="oldest">Oldest</option><option value="number">Number</option><option value="client">Client</option><option value="total">Total</option></select></div>
+    <div><button id="go" type="button">Search</button></div>
+  </div>
+  <p id="msg" class="error"></p>
+
+  <div class="card summary" id="summary"></div>
+  <p class="muted">Totals cover SGD invoices only; void invoices are excluded.</p>
+
+  <table><thead><tr><th>#</th><th>Client</th><th class="num">Total</th><th>Status</th><th>Issued</th><th>Due</th><th></th></tr></thead>
+    <tbody id="rows"></tbody></table>
+
+  <script src="/app.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const say = (t) => { $("msg").textContent = t; };
+    function sumRow(label, o) {
+      return [label, moneyIn(o.total), "GST " + moneyIn(o.gst), "Excl. GST " + moneyIn(o.ex)].map((t, i) => {
+        const e = document.createElement(i === 1 ? "b" : "span"); e.textContent = t; return e; });
+    }
+    async function load() {
+      say("");
+      const p = new URLSearchParams();
+      for (const k of ["from", "to", "q", "status", "type", "sort"]) if ($(k).value) p.set(k, $(k).value);
+      const { rows, summary } = await api("GET", "/api/invoices?" + p);
+      $("summary").replaceChildren(...sumRow("Overall", summary.overall), ...sumRow("Paid", summary.paid), ...sumRow("Unpaid", summary.unpaid));
+      $("rows").replaceChildren(...rows.map((r) => {
+        const tr = document.createElement("tr");
+        const overdue = r.status === "unpaid" && dateOnly(r.due_date) < todayIso();
+        const badge = document.createElement("span"); badge.className = "badge " + (overdue ? "overdue" : r.status);
+        badge.textContent = overdue ? "overdue" : r.status;
+        const st = document.createElement("td"); st.append(badge);
+        const total = cell(moneyIn(r.total, r.currency)); total.className = "num";
+        const act = document.createElement("td");
+        const view = document.createElement("a"); view.href = "/invoice.html?id=" + r.id; view.textContent = "View"; act.append(view, " ");
+        const copy = document.createElement("a"); copy.href = "/invoice-edit.html?copy=" + r.id; copy.textContent = "Copy"; act.append(copy);
+        if (r.status === "unpaid") act.append(" ", button("Mark paid", async () => {
+          try { await api("POST", `/api/invoices/${r.id}/status`, { status: "paid" }); load(); } catch (e) { say(e.message); }
+        }));
+        tr.append(cell(r.invoice_no), cell(r.client_name), total, st, cell(dmy(r.issue_date)), cell(dmy(r.due_date)), act);
+        return tr;
+      }));
+    }
+    $("go").onclick = () => load().catch((e) => say(e.message));
+    renderNav("/invoices.html").then(load).catch((e) => say(e.message));
+  </script>
+</div></body></html>

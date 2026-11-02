@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Clients</title><link rel="stylesheet" href="/style.css">
+</head><body><div class="wrap">
+  <header id="nav"></header>
+  <h2 id="formTitle">Add client</h2>
+  <div class="grid">
+    <div><label for="name">Business name *</label><input id="name" maxlength="200"></div>
+    <div><label for="gst">GST reg no</label><input id="gst" maxlength="50"></div>
+    <div><label for="email">Email</label><input id="email" maxlength="255" type="email"></div>
+    <div><label for="addr">Address</label><textarea id="addr" maxlength="500"></textarea></div>
+  </div>
+  <p><button id="save">Save</button> <button id="clear" class="link" type="button">Clear</button>
+     <span id="msg" class="error"></span></p>
+
+  <h2>Clients</h2>
+  <input id="q" placeholder="Search name or email">
+  <table><thead><tr><th>Business name</th><th>GST reg no</th><th>Email</th><th></th></tr></thead><tbody id="rows"></tbody></table>
+
+  <script src="/app.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let me, editingId = null;
+    const say = (t, ok) => { $("msg").textContent = t; $("msg").className = ok ? "ok" : "error"; };
+
+    function reset() {
+      editingId = null; $("formTitle").textContent = "Add client";
+      for (const id of ["name", "gst", "email", "addr"]) $(id).value = "";
+    }
+    function edit(c) {
+      editingId = c.id; $("formTitle").textContent = "Edit client";
+      $("name").value = c.business_name; $("gst").value = c.gst_reg_no || "";
+      $("email").value = c.email || ""; $("addr").value = c.address || "";
+      scrollTo({ top: 0, behavior: "smooth" });
+    }
+    async function load() {
+      const rows = await api("GET", "/api/clients?q=" + encodeURIComponent($("q").value));
+      $("rows").replaceChildren(...rows.map((c) => {
+        const tr = document.createElement("tr");
+        const actions = document.createElement("td");
+        actions.append(button("Edit", () => edit(c)));
+        if (me.role === "admin") actions.append(button("Deactivate", async () => {
+          if (!confirm(`Deactivate ${c.business_name}? Existing invoices keep their details.`)) return;
+          try { await api("DELETE", "/api/clients/" + c.id); load(); } catch (e) { say(e.message); }
+        }));
+        tr.append(cell(c.business_name), cell(c.gst_reg_no), cell(c.email), actions);
+        return tr;
+      }));
+    }
+    $("save").onclick = async () => {
+      say("");
+      const body = { business_name: $("name").value, gst_reg_no: $("gst").value, email: $("email").value, address: $("addr").value };
+      try {
+        if (editingId) await api("PUT", "/api/clients/" + editingId, body); else await api("POST", "/api/clients", body);
+        reset(); say("Saved.", true); load();
+      } catch (e) { say(e.message); }
+    };
+    $("clear").onclick = () => { reset(); say(""); };
+    let t; $("q").oninput = () => { clearTimeout(t); t = setTimeout(() => load().catch((e) => say(e.message)), 300); };
+    renderNav("/clients.html").then((m) => { me = m; return load(); }).catch((e) => say(e.message));
+  </script>
+</div></body></html>

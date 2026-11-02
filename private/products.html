@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Products &amp; services</title><link rel="stylesheet" href="/style.css">
+</head><body><div class="wrap">
+  <header id="nav"></header>
+
+  <h2 id="formTitle">Add product or service</h2>
+  <div class="grid">
+    <div><label for="name">Name *</label><input id="name" maxlength="300"></div>
+    <div><label for="cat">Category</label><select id="cat"></select></div>
+    <div><label for="price">Unit price (before GST) *</label><input id="price" inputmode="decimal"></div>
+    <div><label for="gst">GST %</label><input id="gst" inputmode="decimal" value="9"></div>
+    <div><label for="unit">Unit (e.g. pcs, hour)</label><input id="unit" maxlength="30"></div>
+  </div>
+  <p><button id="save">Save</button> <button id="clear" class="link" type="button">Clear</button>
+     <span id="msg" class="error"></span></p>
+
+  <h2>Categories</h2>
+  <div class="row">
+    <input id="newCat" placeholder="New category name" maxlength="150">
+    <button id="addCat" type="button">Add category</button>
+  </div>
+  <p id="cats" class="muted"></p>
+
+  <h2>Products &amp; services</h2>
+  <div class="row"><input id="q" placeholder="Search name"><select id="filter"></select></div>
+  <table><thead><tr><th>Name</th><th>Category</th><th class="num">Unit price</th><th class="num">GST %</th><th>Unit</th><th></th></tr></thead>
+    <tbody id="rows"></tbody></table>
+
+  <script src="/app.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let me, editingId = null, categories = [];
+    const say = (t, ok) => { $("msg").textContent = t; $("msg").className = ok ? "ok" : "error"; };
+
+    function option(value, label) { const o = document.createElement("option"); o.value = value; o.textContent = label; return o; }
+    async function loadCategories() {
+      categories = await api("GET", "/api/categories");
+      const keep = $("filter").value;
+      $("cat").replaceChildren(option("", "(none)"), ...categories.map((c) => option(c.id, c.name)));
+      $("filter").replaceChildren(option("", "All categories"), ...categories.map((c) => option(c.id, c.name)));
+      $("filter").value = keep;
+      $("cats").replaceChildren(...categories.flatMap((c) => {
+        const s = document.createElement("span"); s.textContent = c.name + " ";
+        if (me.role === "admin") s.append(button("x", async () => {
+          if (!confirm(`Delete category "${c.name}"? Its products stay, uncategorised.`)) return;
+          try { await api("DELETE", "/api/categories/" + c.id); await loadCategories(); load(); } catch (e) { say(e.message); }
+        }));
+        return [s, " "];
+      }));
+    }
+    function reset() {
+      editingId = null; $("formTitle").textContent = "Add product or service";
+      for (const id of ["name", "price", "unit"]) $(id).value = "";
+      $("gst").value = "9"; $("cat").value = "";
+    }
+    function edit(p) {
+      editingId = p.id; $("formTitle").textContent = "Edit product or service";
+      $("name").value = p.name; $("price").value = p.unit_price; $("gst").value = p.gst_rate;
+      $("unit").value = p.unit || ""; $("cat").value = p.category_id || "";
+      scrollTo({ top: 0, behavior: "smooth" });
+    }
+    async function load() {
+      const rows = await api("GET", `/api/products?q=${encodeURIComponent($("q").value)}&category=${$("filter").value}`);
+      $("rows").replaceChildren(...rows.map((p) => {
+        const tr = document.createElement("tr");
+        const price = cell(money(p.unit_price)); price.className = "num";
+        const gst = cell(p.gst_rate); gst.className = "num";
+        const actions = document.createElement("td");
+        actions.append(button("Edit", () => edit(p)));
+        if (me.role === "admin") actions.append(button("Deactivate", async () => {
+          if (!confirm(`Deactivate ${p.name}? Existing invoices keep their details.`)) return;
+          try { await api("DELETE", "/api/products/" + p.id); load(); } catch (e) { say(e.message); }
+        }));
+        tr.append(cell(p.name), cell(p.category), price, gst, cell(p.unit), actions);
+        return tr;
+      }));
+    }
+    $("save").onclick = async () => {
+      say("");
+      const body = { name: $("name").value, category_id: $("cat").value, unit_price: $("price").value, gst_rate: $("gst").value, unit: $("unit").value };
+      try {
+        if (editingId) await api("PUT", "/api/products/" + editingId, body); else await api("POST", "/api/products", body);
+        reset(); say("Saved.", true); load();
+      } catch (e) { say(e.message); }
+    };
+    $("clear").onclick = () => { reset(); say(""); };
+    $("addCat").onclick = async () => {
+      say("");
+      try { await api("POST", "/api/categories", { name: $("newCat").value }); $("newCat").value = ""; await loadCategories(); }
+      catch (e) { say(e.message); }
+    };
+    $("filter").onchange = () => load().catch((e) => say(e.message));
+    let t; $("q").oninput = () => { clearTimeout(t); t = setTimeout(() => load().catch((e) => say(e.message)), 300); };
+    renderNav("/products.html").then((m) => { me = m; return loadCategories(); }).then(load).catch((e) => say(e.message));
+  </script>
+</div></body></html>

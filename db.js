@@ -40,11 +40,34 @@ function getPool() {
   return poolPromise;
 }
 
+function bind(request, params) {
+  for (const [name, p] of Object.entries(params)) {
+    if (p && typeof p === "object" && "type" in p && "value" in p) request.input(name, p.type, p.value);
+    else request.input(name, p);
+  }
+  return request;
+}
+
 // Always pass user input as parameters (@name), never by joining strings into the SQL.
 async function query(text, params = {}) {
-  const request = (await getPool()).request();
-  for (const [name, value] of Object.entries(params)) request.input(name, value);
+  const request = bind((await getPool()).request(), params);
   return (await request.query(text)).recordset || [];
 }
 
-module.exports = { query, getPool, sql };
+// Runs several statements as one unit: all succeed together or none are saved.
+async function transaction(work) {
+  const tx = new sql.Transaction(await getPool());
+  await tx.begin();
+  const q = async (text, params = {}) =>
+    (await bind(new sql.Request(tx), params).query(text)).recordset || [];
+  try {
+    const result = await work(q);
+    await tx.commit();
+    return result;
+  } catch (err) {
+    try { await tx.rollback(); } catch (_) { /* already rolled back */ }
+    throw err;
+  }
+}
+
+module.exports = { query, transaction, getPool, sql };

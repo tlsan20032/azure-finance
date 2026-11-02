@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Invoice</title><link rel="stylesheet" href="/style.css">
+</head><body><div class="wrap">
+  <header id="nav"></header>
+  <p class="noprint" id="actions"></p>
+  <p id="msg" class="error noprint"></p>
+  <div class="doc" id="doc" hidden>
+    <div id="void" class="void-banner" hidden>VOID</div>
+    <div class="two">
+      <div><strong id="bName"></strong><pre class="plain" id="bAddr"></pre><div id="bIds" class="muted"></div></div>
+      <div style="text-align:right"><h1 id="docTitle"></h1><div>No. <strong id="no"></strong></div>
+        <div>Date: <span id="issue"></span></div><div>Due: <span id="due"></span></div><div id="ref"></div></div>
+    </div>
+    <div><span class="muted">Bill to</span><br><strong id="cName"></strong><pre class="plain" id="cAddr"></pre><div id="cIds" class="muted"></div></div>
+    <table><thead><tr><th>Description</th><th class="num">Qty</th><th class="num">Unit price</th><th class="num">Discount</th><th class="num">GST %</th><th class="num">Amount (excl. GST)</th></tr></thead>
+      <tbody id="lines"></tbody></table>
+    <div class="totals" style="margin-top:1rem">
+      <div><span>Subtotal (excl. GST)</span><span id="tSub"></span></div>
+      <div><span>GST</span><span id="tGst"></span></div>
+      <div class="grand"><span>Total</span><span id="tTotal"></span></div>
+      <div id="sgdGst" class="muted" hidden></div>
+    </div>
+    <div id="notesBox" hidden><strong>Notes</strong><pre class="plain" id="notes"></pre></div>
+    <div id="payBox" hidden><strong>Payment details</strong><pre class="plain" id="pay"></pre></div>
+    <pre class="plain muted" id="foot"></pre>
+  </div>
+  <script src="/app.js"></script>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const say = (t) => { $("msg").textContent = t; };
+    const id = new URLSearchParams(location.search).get("id");
+    (async () => {
+      const me = await renderNav("/invoices.html");
+      const [{ invoice: v, items }, s] = await Promise.all([api("GET", "/api/invoices/" + id), api("GET", "/api/settings")]);
+      const cur = v.currency, tax = v.doc_type === "tax_invoice";
+      $("docTitle").textContent = tax ? "TAX INVOICE" : "INVOICE";
+      $("no").textContent = v.invoice_no; $("issue").textContent = dmy(v.issue_date); $("due").textContent = dmy(v.due_date);
+      $("ref").textContent = v.reference_no ? "Ref: " + v.reference_no : "";
+      $("bName").textContent = s.business_name || ""; $("bAddr").textContent = s.business_address || "";
+      $("bIds").textContent = [s.gst_reg_no && "GST Reg No: " + s.gst_reg_no, s.uen && "UEN: " + s.uen].filter(Boolean).join("  |  ");
+      $("cName").textContent = v.client_name; $("cAddr").textContent = v.client_address || "";
+      $("cIds").textContent = [v.client_gst_reg_no && "GST Reg No: " + v.client_gst_reg_no, v.client_email].filter(Boolean).join("  |  ");
+      $("lines").replaceChildren(...items.map((x) => {
+        const tr = document.createElement("tr");
+        const disc = Number(x.discount_value) ? (x.discount_type === "percent" ? x.discount_value + "%" : moneyIn(x.discount_value, cur)) : "";
+        const cells = [cell(x.name + (x.unit ? ` (${x.unit})` : "")), cell(Number(x.quantity)), cell(moneyIn(x.unit_price, cur)), cell(disc), cell(Number(x.gst_rate)), cell(moneyIn(x.line_net, cur))];
+        cells.slice(1).forEach((c) => (c.className = "num")); tr.append(...cells); return tr;
+      }));
+      $("tSub").textContent = moneyIn(v.subtotal_ex_gst, cur); $("tGst").textContent = moneyIn(v.gst_total, cur); $("tTotal").textContent = moneyIn(v.total, cur);
+      if (cur !== "SGD" && v.sgd_exchange_rate) { $("sgdGst").hidden = false; $("sgdGst").textContent = `GST in SGD: ${moneyIn(v.gst_total * v.sgd_exchange_rate, "SGD")} (rate ${Number(v.sgd_exchange_rate)})`; }
+      if (v.notes) { $("notesBox").hidden = false; $("notes").textContent = v.notes; }
+      if (s.payment_details) { $("payBox").hidden = false; $("pay").textContent = s.payment_details; }
+      $("foot").textContent = s.invoice_footer || "";
+      if (v.status === "void") { $("void").hidden = false; say("Voided: " + (v.void_reason || "")); }
+      $("doc").hidden = false; document.title = (tax ? "Tax Invoice " : "Invoice ") + v.invoice_no;
+
+      const act = $("actions"), reload = () => location.reload();
+      const run = (fn) => async () => { try { await fn(); reload(); } catch (e) { say(e.message); } };
+      act.append(button("Print / Save as PDF", () => print(), ""), " ");
+      const copy = document.createElement("a"); copy.href = "/invoice-edit.html?copy=" + v.id; copy.textContent = "Copy"; act.append(copy, " ");
+      if (v.status === "unpaid" && !v.sent_at) { const e = document.createElement("a"); e.href = "/invoice-edit.html?id=" + v.id; e.textContent = "Edit"; act.append(e, " "); }
+      if (v.status === "unpaid") act.append(button("Mark paid", run(() => api("POST", `/api/invoices/${v.id}/status`, { status: "paid" }))), " ");
+      if (v.status === "paid") act.append(button("Mark unpaid", run(() => api("POST", `/api/invoices/${v.id}/status`, { status: "unpaid" }))), " ");
+      if (me.role === "admin" && v.status !== "void") act.append(button("Void", async () => {
+        const reason = prompt("Reason for voiding invoice " + v.invoice_no + "?"); if (!reason) return;
+        try { await api("POST", `/api/invoices/${v.id}/void`, { reason }); reload(); } catch (e) { say(e.message); }
+      }));
+    })().catch((e) => say(e.message));
+  </script>
+</div></body></html>

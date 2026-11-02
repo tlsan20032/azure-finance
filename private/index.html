@@ -3,17 +3,8 @@
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Invoices</title><link rel="stylesheet" href="/style.css">
 </head><body><div class="wrap">
-  <header class="bar">
-    <strong>Invoices</strong>
-    <span><span id="who" class="muted"></span> &nbsp; <button class="link" id="out">Sign out</button></span>
-  </header>
-  <div class="card">You're signed in. Clients, products and invoices are the next steps.</div>
-  <script>
-    fetch("/api/me").then(r => r.ok ? r.json() : Promise.reject()).then(me => {
-      document.getElementById("who").textContent = `${me.displayName} (${me.role})`;
-    }).catch(() => { location.href = "/login.html"; });
-    document.getElementById("out").addEventListener("click", async () => {
-      await fetch("/api/logout", { method: "POST" }); location.href = "/login.html";
-    });
-  </script>
+  <header id="nav"></header>
+  <div class="card">Welcome. Manage your <a href="/clients.html">clients</a> and your <a href="/products.html">products &amp; services</a>. Then <a href="/invoices.html">create and manage invoices</a>.</div>
+  <script src="/app.js"></script>
+  <script>renderNav("/");</script>
 </div></body></html>
