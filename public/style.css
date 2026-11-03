@@ -53,3 +53,6 @@ pre.plain { font:inherit; white-space:pre-wrap; margin:.2rem 0; }
   body { background:#fff; color:#000; } .doc { border:0; padding:0; }
   :root { --fg:#000; --muted:#444; --border:#999; --bg:#fff; }
 }
+
+/* An element with the hidden attribute must stay hidden, even if a class sets its display. */
+[hidden] { display: none !important; }
