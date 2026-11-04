@@ -61,6 +61,27 @@
       act.append(button("Print / Save as PDF", () => print(), ""), " ");
       const copy = document.createElement("a"); copy.href = "/invoice-edit.html?copy=" + v.id; copy.textContent = "Copy"; act.append(copy, " ");
       if (v.status === "unpaid" && !v.sent_at) { const e = document.createElement("a"); e.href = "/invoice-edit.html?id=" + v.id; e.textContent = "Edit"; act.append(e, " "); }
+
+      // ---------- INSERT NEW SEND EMAIL LINK HERE ----------
+      if (v.status !== "void") {
+        const sendLnk = document.createElement("a");
+        sendLnk.href = "#";
+        sendLnk.textContent = "Send";
+        sendLnk.onclick = async (e) => {
+          e.preventDefault();
+          if (!confirm("Are you sure you want to email this invoice to the client?")) return;
+          try {
+            await api("POST", `/api/invoices/${v.id}/send`);
+            alert("Invoice email has been sent successfully!");
+            reload();
+          } catch (err) {
+            say(err.message);
+          }
+        };
+        act.append(sendLnk, " ");
+      }
+      // ----------------------------------------------------
+
       if (v.status === "unpaid") act.append(button("Mark paid", run(() => api("POST", `/api/invoices/${v.id}/status`, { status: "paid" }))), " ");
       if (v.status === "paid") act.append(button("Mark unpaid", run(() => api("POST", `/api/invoices/${v.id}/status`, { status: "unpaid" }))), " ");
       if (me.role === "admin" && v.status !== "void") act.append(button("Void", async () => {
