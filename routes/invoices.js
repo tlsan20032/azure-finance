@@ -223,7 +223,7 @@ router.post("/:id/send", wrap(async (req, res) => {
 
   // 2. Fetch the structural line items and global organization settings
   const items = await query("SELECT * FROM dbo.invoice_items WHERE invoice_id = @id ORDER BY line_no", { id });
-  const [settings] = await query("SELECT TOP 1 business_name, business_address, gst_reg_no, uen, payment_details, invoice_footer FROM dbo.settings");
+  const [settings] = await query("SELECT business_name, business_address, gst_reg_no, uen, payment_details, invoice_footer FROM dbo.app_settings");
 
   // 3. Compile the PDF buffer automatically using your code template
   let pdfBuffer;
