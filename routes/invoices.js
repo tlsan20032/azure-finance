@@ -2,7 +2,7 @@ const express = require("express");
 const { query, transaction, sql } = require("../db");
 const { audit } = require("../audit");
 const { calcInvoice } = require("../lib/calc");
-const { sendMail } = require("../lib/mail"); // Adjust paths based on your actual structure
+const { sendMail } = require("../lib/mailer"); // Adjust paths based on your actual structure
 const { buildInvoicePdf } = require("../lib/pdf");
 const router = express.Router();
 
