@@ -2,6 +2,8 @@ const express = require("express");
 const { query, transaction, sql } = require("../db");
 const { audit } = require("../audit");
 const { calcInvoice } = require("../lib/calc");
+const { sendMail } = require("../lib/mail"); // Adjust paths based on your actual structure
+const { buildInvoicePdf } = require("../lib/pdf");
 const router = express.Router();
 
 const wrap = (fn) => (req, res, next) => fn(req, res, next).catch(next);
@@ -203,6 +205,70 @@ router.post("/:id/void", wrap(async (req, res) => {
     { id, by: req.user.id, reason });
   if (!rows.length) return res.status(409).json({ error: "Invoice not found or already void." });
   await audit(req.user.id, "invoice.void", `id=${id} reason=${reason}`);
+  res.json({ ok: true });
+}));
+
+// ---------- send email with invoice pdf attachment ----------
+router.post("/:id/send", wrap(async (req, res) => {
+  const id = idOf(req.params.id);
+  if (!id) return res.status(400).json({ error: "Bad invoice id." });
+
+  // 1. Fetch the complete invoice metadata
+  const [invoice] = await query(
+    "SELECT client_name, client_email, invoice_no, total, email_text, doc_type, status FROM dbo.invoices WHERE id = @id", 
+    { id }
+  );
+  if (!invoice) return res.status(404).json({ error: "Invoice not found." });
+  if (!invoice.client_email) return res.status(400).json({ error: "This client does not have an email address." });
+
+  // 2. Fetch the structural line items and global organization settings
+  const items = await query("SELECT * FROM dbo.invoice_items WHERE invoice_id = @id ORDER BY line_no", { id });
+  const [settings] = await query("SELECT TOP 1 business_name, business_address, gst_reg_no, uen, payment_details, invoice_footer FROM dbo.settings");
+
+  // 3. Compile the PDF buffer automatically using your code template
+  let pdfBuffer;
+  try {
+    pdfBuffer = await buildInvoicePdf({ invoice, items, settings: settings || {} });
+  } catch (pdfErr) {
+    console.error("PDF Compilation Failed:", pdfErr);
+    return res.status(500).json({ error: "Could not compile the invoice document." });
+  }
+
+  // 4. Construct content layouts matching context
+  const label = invoice.doc_type === "tax_invoice" ? "Tax Invoice" : "Invoice";
+  const subject = `${label} #${invoice.invoice_no} from ${settings?.business_name || 'Our Company'}`;
+  
+  const emailMessage = invoice.email_text || 
+    `Dear ${invoice.client_name || 'Customer'},\n\nPlease find your ${label.toLowerCase()} #${invoice.invoice_no} attached to this message.\n\nTotal Amount Due: $${invoice.total}\n\nThank you for your business.`;
+
+  // 5. Send using your nodemailer script asset
+  try {
+    await sendMail({
+      to: invoice.client_email,
+      subject: subject,
+      text: emailMessage,
+      attachments: [
+        {
+          filename: `${label.replace(/\s+/g, '_')}_${invoice.invoice_no}.pdf`,
+          content: pdfBuffer // Attaches binary PDF stream natively
+        }
+      ]
+    });
+  } catch (mailErr) {
+    console.error("SMTP Transport Disconnected:", mailErr);
+    return res.status(502).json({ error: "Email server delivery failed. Please verify SMTP environment variables configuration." });
+  }
+
+  // 6. Record timestamps into database
+  await query(
+    `UPDATE dbo.invoices 
+     SET sent_at = SYSUTCDATETIME(), updated_at = SYSUTCDATETIME() 
+     WHERE id = @id`, { id }
+  );
+
+  // 7. Push transaction entry to system audit trail logs
+  await audit(req.user.id, "invoice.send", `id=${id} to=${invoice.client_email}`);
+  
   res.json({ ok: true });
 }));
 
