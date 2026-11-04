@@ -215,7 +215,7 @@ router.post("/:id/send", wrap(async (req, res) => {
 
   // 1. Fetch the complete invoice metadata
   const [invoice] = await query(
-   SELECT client_name, client_email, client_address, client_gst_reg_no, 
+   `SELECT client_name, client_email, client_address, client_gst_reg_no, 
           invoice_no, issue_date, due_date, reference_no, subtotal_ex_gst, gst_total, 
           total, email_text, doc_type, status, notes, currency 
    FROM dbo.invoices 
