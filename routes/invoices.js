@@ -215,9 +215,14 @@ router.post("/:id/send", wrap(async (req, res) => {
 
   // 1. Fetch the complete invoice metadata
   const [invoice] = await query(
-    "SELECT client_name, client_email, invoice_no, total, email_text, doc_type, status FROM dbo.invoices WHERE id = @id", 
-    { id }
-  );
+   SELECT client_name, client_email, client_address, client_gst_reg_no, 
+          invoice_no, issue_date, due_date, reference_no, subtotal_ex_gst, gst_total, 
+          total, email_text, doc_type, status, notes, currency 
+   FROM dbo.invoices 
+   WHERE id = @id`, 
+  { id }
+);
+
   if (!invoice) return res.status(404).json({ error: "Invoice not found." });
   if (!invoice.client_email) return res.status(400).json({ error: "This client does not have an email address." });
 
